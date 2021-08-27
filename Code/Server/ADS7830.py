@@ -1,6 +1,11 @@
-import time
-
+import numpy as np
 import smbus
+
+
+LOAD_BATTERY_CHANNEL = 0
+RPI_BATTERY_CHANNEL = 4
+
+BATTERY_LIST_SIZE = 25
 
 
 class ADS7830:
@@ -11,66 +16,58 @@ class ADS7830:
         self.ADS7830_DEFAULT_ADDRESS = 0x48
         # ADS7830 Command Set
         self.ADS7830_CMD = 0x84  # Single-Ended Inputs
-        self.battery1_flag = False
-        self.battery2_flag = False
-        self.battery1Voltage = [0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        self.battery2Voltage = [0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.load_battery_setup = False
+        self.rpi_battery_setup = False
+        self.load_battery_voltage = [0] * BATTERY_LIST_SIZE
+        self.rpi_battery_voltage = [0] * BATTERY_LIST_SIZE
 
-    def readAdc(self, channel):
+    def read_adc(self, channel: int) -> int:
         """Select the Command data from the given provided value above"""
-        COMMAND_SET = self.ADS7830_CMD | (
-            (((channel << 2) | (channel >> 1)) & 0x07) << 4)
+        COMMAND_SET = self.ADS7830_CMD | ((((channel << 2) | (channel >> 1)) & 0x07) << 4)
         self.bus.write_byte(self.ADS7830_DEFAULT_ADDRESS, COMMAND_SET)
         data = self.bus.read_byte(self.ADS7830_DEFAULT_ADDRESS)
         return data
 
-    def voltage(self, channel):
-        if channel == 0 or channel == 4:
-            data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-            if self.battery1_flag == False or self.battery2_flag == False:
-                for i in range(25):
-                    for j in range(25):
-                        data[j] = self.readAdc(channel)
-                    if channel == 0:
-                        self.battery1Voltage.pop(0)
-                        self.battery1Voltage.append(max(data))
-                        battery_voltage = (
-                            sum(self.battery1Voltage)/len(self.battery1Voltage))/255.0*5.0
-                        self.battery1_flag = True
+    def voltage(self, channel: int) -> float:
+        if channel == LOAD_BATTERY_CHANNEL or channel == RPI_BATTERY_CHANNEL:
+            if not self.load_battery_setup or not self.rpi_battery_setup:
+                for i in range(BATTERY_LIST_SIZE):
+                    data: list[int] = []
+                    for j in range(BATTERY_LIST_SIZE):
+                        data.append(self.read_adc(channel))
+                    if channel == LOAD_BATTERY_CHANNEL:
+                        self.load_battery_voltage.pop(0)
+                        self.load_battery_voltage.append(max(data))
+                        battery_voltage = np.mean(self.load_battery_voltage) / 255.0 * 5.0
+                        self.load_battery_setup = True
                     else:
-                        self.battery2Voltage.pop(0)
-                        self.battery2Voltage.append(max(data))
-                        battery_voltage = (
-                            sum(self.battery2Voltage)/len(self.battery2Voltage))/255.0*5.0
-                        self.battery2_flag = True
+                        self.rpi_battery_voltage.pop(0)
+                        self.rpi_battery_voltage.append(max(data))
+                        battery_voltage = np.mean(self.rpi_battery_voltage) / 255.0 * 5.0
+                        self.rpi_battery_setup = True
             else:
-                for j in range(25):
-                    data[j] = self.readAdc(channel)
-                if channel == 0:
-                    self.battery1Voltage.pop(0)
-                    self.battery1Voltage.append(max(data))
-                    battery_voltage = (
-                        sum(self.battery1Voltage)/len(self.battery1Voltage))/255.0*5.0
+                data: list[int] = []
+                for j in range(BATTERY_LIST_SIZE):
+                    data.append(self.read_adc(channel))
+                if channel == LOAD_BATTERY_CHANNEL:
+                    self.load_battery_voltage.pop(0)
+                    self.load_battery_voltage.append(max(data))
+                    battery_voltage = np.mean(self.load_battery_voltage) / 255.0 * 5.0
                 else:
-                    self.battery2Voltage.pop(0)
-                    self.battery2Voltage.append(max(data))
-                    battery_voltage = (
-                        sum(self.battery2Voltage)/len(self.battery2Voltage))/255.0*5.0
+                    self.rpi_battery_voltage.pop(0)
+                    self.rpi_battery_voltage.append(max(data))
+                    battery_voltage = np.mean(self.rpi_battery_voltage) / 255.0 * 5.0
         else:
-            data = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            data: list[int] = []
             for i in range(9):
-                data[i] = self.readAdc(channel)
-            data.sort()
-            battery_voltage = data[4]/255.0*5.0
+                data.append(self.read_adc(channel))
+            battery_voltage = np.percentile(data, 50) / 255.0 * 5.0
         return battery_voltage
 
-    def batteryPower(self):
-        battery1 = round(self.voltage(0)*3, 2)
-        battery2 = round(self.voltage(4)*3, 2)
-        return battery1, battery2
+    def battery_power(self):
+        load_battery = round(self.voltage(LOAD_BATTERY_CHANNEL) * 3, 2)
+        rpi_battery = round(self.voltage(RPI_BATTERY_CHANNEL) * 3, 2)
+        return load_battery, rpi_battery
 
 
 if __name__ == '__main__':

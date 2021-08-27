@@ -1,14 +1,17 @@
 # coding:utf-8
-import math
+from utils import map_num
 import time
 
 import Adafruit_PCA9685
-import smbus
 
 
-def mapNum(value, fromLow, fromHigh, toLow, toHigh):
-    return (toHigh-toLow)*(value-fromLow) / (fromHigh-fromLow) + toLow
+ANGLE_RANGE = (0, 180)
+DUTY_RANGE = (0, 4095)
 
+def angle_to_duty(angle: int):
+    # angle 0-180 map to 500-2500us ,then map to duty 0-4095
+    duty = map_num(map_num(angle, ANGLE_RANGE, (500, 2500)), (0, 20000), DUTY_RANGE)
+    return int(duty)
 
 class Servo:
     def __init__(self):
@@ -21,15 +24,12 @@ class Servo:
         time.sleep(0.01)
 
     # Convert the input angle to the value of pca9685
-    def setServoAngle(self, channel, angle):
+    def set_servo_angle(self, channel: int, angle: int):
         if channel < 16:
-            # 0-180 map to 500-2500us ,then map to duty 0-4095
-            date = mapNum(mapNum(angle, 0, 180, 500, 2500), 0, 20000, 0, 4095)
-            self.pwm_41.set_pwm(channel, 0, int(date))
+            self.pwm_41.set_pwm(channel, 0, angle_to_duty(angle))
         elif channel >= 16 and channel < 32:
             channel -= 16
-            date = mapNum(mapNum(angle, 0, 180, 500, 2500), 0, 20000, 0, 4095)
-            self.pwm_40.set_pwm(channel, 0, int(date))
+            self.pwm_40.set_pwm(channel, 0, angle_to_duty(angle))
         # time.sleep(0.0001)
 
     def relax(self):
@@ -40,14 +40,14 @@ class Servo:
 
 
 def servo_installation_position():
-    S = Servo()
+    servo = Servo()
     for i in range(32):
         if (i == 10 or i == 13 or i == 31):
-            S.setServoAngle(i, 0)
+            servo.set_servo_angle(i, 0)
         elif (i == 18 or i == 21 or i == 27):
-            S.setServoAngle(i, 180)
+            servo.set_servo_angle(i, 180)
         else:
-            S.setServoAngle(i, 90)
+            servo.set_servo_angle(i, 90)
     time.sleep(3)
 
 

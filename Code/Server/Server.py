@@ -16,11 +16,12 @@ from Led import *
 from Servo import *
 from Thread import *
 from Ultrasonic import *
+from utils import restriction
 
 
 class Server:
     def __init__(self):
-        self.tcp_flag = False
+        self.tcp_enabled = False
         self.led = Led()
         self.adc = ADS7830()
         self.servo = Servo()
@@ -31,33 +32,28 @@ class Server:
 
     def get_interface_ip(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        return socket.inet_ntoa(fcntl.ioctl(s.fileno(),
-                                            0x8915,
-                                            struct.pack('256s', b'wlan0'[:15])
-                                            )[20:24])
+        return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', b'wlan0'[:15]))[20:24])
 
     def turn_on_server(self):
         # ip adress
         HOST = self.get_interface_ip()
         # Port 8002 for video transmission
-        self.server_socket = socket.socket()
-        self.server_socket.setsockopt(
-            socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        self.server_socket.bind((HOST, 8002))
-        self.server_socket.listen(1)
+        self.video_socket = socket.socket()
+        self.video_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self.video_socket.bind((HOST, 8002))
+        self.video_socket.listen(1)
 
         # Port 5002 is used for instruction sending and receiving
-        self.server_socket1 = socket.socket()
-        self.server_socket1.setsockopt(
-            socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        self.server_socket1.bind((HOST, 5002))
-        self.server_socket1.listen(1)
+        self.instruction_socket = socket.socket()
+        self.instruction_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self.instruction_socket.bind((HOST, 5002))
+        self.instruction_socket.listen(1)
         print('Server address: '+HOST)
 
     def turn_off_server(self):
         try:
-            self.connection.close()
-            self.connection1.close()
+            self.video_conn.close()
+            self.instruction_conn.close()
         except:
             print('\n'+"No client connection")
 
@@ -78,15 +74,15 @@ class Server:
 
     def transmission_video(self):
         try:
-            self.connection, self.client_address = self.server_socket.accept()
-            self.connection = self.connection.makefile('wb')
+            self.video_conn, self.video_address = self.video_socket.accept()
+            self.video_conn = self.video_conn.makefile('wb')
         except:
             pass
-        self.server_socket.close()
+        self.video_socket.close()
         try:
             with picamera.PiCamera() as camera:
-                camera.resolution = (400, 300)       # pi camera resolution
-                camera.framerate = 15               # 15 frames/sec
+                camera.resolution = (640, 480)      # pi camera resolution
+                camera.framerate = 30               # 15 frames/sec
                 camera.saturation = 80              # Set image video saturation
                 # Set the brightness of the image (50 indicates the state of white balance)
                 camera.brightness = 50
@@ -99,12 +95,12 @@ class Server:
                 print("Start transmit ... ")
                 for foo in camera.capture_continuous(stream, 'jpeg', use_video_port=True):
                     try:
-                        self.connection.flush()
+                        self.video_conn.flush()
                         stream.seek(0)
                         b = stream.read()
                         lengthBin = struct.pack('L', len(b))
-                        self.connection.write(lengthBin)
-                        self.connection.write(b)
+                        self.video_conn.write(lengthBin)
+                        self.video_conn.write(b)
                         stream.seek(0)
                         stream.truncate()
                     except BaseException as e:
@@ -117,41 +113,40 @@ class Server:
 
     def receive_instruction(self):
         try:
-            self.connection1, self.client_address1 = self.server_socket1.accept()
+            self.instruction_conn, self.instruction_address = self.instruction_socket.accept()
             print("Client connection successful !")
         except:
             print("Client connect failed")
-        self.server_socket1.close()
+        self.instruction_socket.close()
 
         while True:
             try:
-                allData = self.connection1.recv(1024).decode('utf-8')
+                all_data = self.instruction_conn.recv(1024).decode('utf-8')
             except:
-                if self.tcp_flag:
+                if self.tcp_enabled:
                     self.reset_server()
                     break
                 else:
                     break
-            if allData == "" and self.tcp_flag:
+            if all_data == "" and self.tcp_enabled:
                 self.reset_server()
                 break
             else:
-                cmdArray = allData.split('\n')
-                print(cmdArray)
-                if cmdArray[-1] != "":
-                    cmdArray == cmdArray[:-1]
-            for oneCmd in cmdArray:
-                data = oneCmd.split("#")
+                cmd_array = all_data.split('\n')
+                print(cmd_array)
+                if cmd_array[-1] != "":
+                    cmd_array == cmd_array[:-1]
+            for one_cmd in cmd_array:
+                data = one_cmd.split("#")
                 if data == None or data[0] == '':
                     continue
                 elif cmd.CMD_BUZZER in data:
                     self.buzzer.run(data[1])
                 elif cmd.CMD_POWER in data:
-                    batteryVoltage = self.adc.batteryPower()
-                    command = cmd.CMD_POWER+"#" + \
-                        str(batteryVoltage[0])+"#"+str(batteryVoltage[1])+"\n"
+                    batteryVoltage = self.adc.battery_power()
+                    command = cmd.CMD_POWER+"#" + str(batteryVoltage[0])+"#"+str(batteryVoltage[1])+"\n"
                     # print(command)
-                    self.send_data(self.connection1, command)
+                    self.send_data(self.instruction_conn, command)
                     if batteryVoltage[0] < 5.5 or batteryVoltage[1] < 6:
                         for i in range(3):
                             self.buzzer.run("1")
@@ -163,32 +158,29 @@ class Server:
                         stop_thread(thread_led)
                     except:
                         pass
-                    thread_led = threading.Thread(
-                        target=self.led.light, args=(data,))
+                    thread_led = threading.Thread(target=self.led.light, args=(data,))
                     thread_led.start()
-                elif cmd.CMD_LED_MOD in data:
+                elif cmd.CMD_LED_MODE in data:
                     try:
                         stop_thread(thread_led)
                         # print("stop,yes")
                     except:
                         # print("stop,no")
                         pass
-                    thread_led = threading.Thread(
-                        target=self.led.light, args=(data,))
+                    thread_led = threading.Thread(target=self.led.light, args=(data,))
                     thread_led.start()
                 elif cmd.CMD_SONIC in data:
-                    command = cmd.CMD_SONIC+"#" + \
-                        str(self.sonic.getDistance())+"\n"
-                    self.send_data(self.connection1, command)
+                    command = cmd.CMD_SONIC+"#" + str(self.sonic.get_distance())+"\n"
+                    self.send_data(self.instruction_conn, command)
                 elif cmd.CMD_HEAD in data:
                     if len(data) == 3:
-                        self.servo.setServoAngle(int(data[1]), int(data[2]))
+                        self.servo.set_servo_angle(int(data[1]), int(data[2]))
                 elif cmd.CMD_CAMERA in data:
                     if len(data) == 3:
-                        x = self.control.restriction(int(data[1]), 50, 180)
-                        y = self.control.restriction(int(data[2]), 0, 180)
-                        self.servo.setServoAngle(0, x)
-                        self.servo.setServoAngle(1, y)
+                        x = restriction(int(data[1]), (50, 180))
+                        y = restriction(int(data[2]), (0, 180))
+                        self.servo.set_servo_angle(0, x)
+                        self.servo.set_servo_angle(1, y)
                 elif cmd.CMD_RELAX in data:
                     # print(data)
                     if self.control.relax_flag == False:
@@ -197,11 +189,11 @@ class Server:
                     else:
                         self.control.relax(False)
                         self.control.relax_flag = False
-                elif cmd.CMD_SERVOPOWER in data:
+                elif cmd.CMD_SERVO_POWER in data:
                     if data[1] == "0":
-                        GPIO.output(self.control.GPIO_4, True)
+                        GPIO.output(GPIO_SERVO_POWER, True)
                     else:
-                        GPIO.output(self.control.GPIO_4, False)
+                        GPIO.output(GPIO_SERVO_POWER, False)
 
                 else:
                     self.control.order = data
@@ -210,10 +202,10 @@ class Server:
             stop_thread(thread_led)
         except:
             pass
-        try:
-            stop_thread(thread_sonic)
-        except:
-            pass
+        # try:
+        #     stop_thread(thread_sonic)
+        # except:
+        #     pass
         print("close_recv")
 
 

@@ -3,10 +3,8 @@ import getopt
 import os
 import sys
 
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtWidgets import QApplication, QMainWindow
 
 from Control import *
 from Server import *
@@ -27,7 +25,7 @@ class MyWindow(QMainWindow, Ui_server):
             self.on_and_off_server()
         if self.start_tcp:
             self.server.turn_on_server()
-            self.server.tcp_flag = True
+            self.server.tcp_enabled = True
             self.video = threading.Thread(
                 target=self.server.transmission_video)
             self.video.start()
@@ -52,7 +50,7 @@ class MyWindow(QMainWindow, Ui_server):
             self.pushButton_On_And_Off.setText('Off')
             self.states.setText('On')
             self.server.turn_on_server()
-            self.server.tcp_flag = True
+            self.server.tcp_enabled = True
             self.video = threading.Thread(
                 target=self.server.transmission_video)
             self.video.start()
@@ -62,7 +60,7 @@ class MyWindow(QMainWindow, Ui_server):
         else:
             self.pushButton_On_And_Off.setText('On')
             self.states.setText('Off')
-            self.server.tcp_flag = False
+            self.server.tcp_enabled = False
             try:
                 stop_thread(self.video)
                 stop_thread(self.instruction)
@@ -78,8 +76,8 @@ class MyWindow(QMainWindow, Ui_server):
         except:
             pass
         try:
-            self.server.server_socket.shutdown(2)
-            self.server.server_socket1.shutdown(2)
+            self.server.video_socket.shutdown(2)
+            self.server.instruction_socket.shutdown(2)
             self.server.turn_off_server()
         except:
             pass

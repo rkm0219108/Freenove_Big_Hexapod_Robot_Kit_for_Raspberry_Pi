@@ -3,18 +3,20 @@ import time
 import RPi.GPIO as GPIO
 
 
+BUZZER_PIN = 17
+
+
 class Buzzer:
     def __init__(self):
         GPIO.setwarnings(False)
-        self.Buzzer_Pin = 17
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.Buzzer_Pin, GPIO.OUT)
+        GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
-    def run(self, command):
+    def run(self, command: str):
         if command != "0":
-            GPIO.output(self.Buzzer_Pin, True)
+            GPIO.output(BUZZER_PIN, True)
         else:
-            GPIO.output(self.Buzzer_Pin, False)
+            GPIO.output(BUZZER_PIN, False)
 
 
 if __name__ == '__main__':

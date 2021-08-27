@@ -1,5 +1,6 @@
 # -*-coding: utf-8 -*-
 import time
+from typing import List
 
 from rpi_ws281x import *
 
@@ -9,16 +10,15 @@ LED_PIN = 18      # GPIO pin connected to the pixels (18 uses PWM!).
 LED_FREQ_HZ = 800000  # LED signal frequency in hertz (usually 800khz)
 LED_DMA = 10      # DMA channel to use for generating signal (try 10)
 LED_BRIGHTNESS = 255     # Set to 0 for darkest and 255 for brightest
-# True to invert the signal (when using NPN transistor level shift)
-LED_INVERT = False
+LED_INVERT = False     # True to invert the signal (when using NPN transistor level shift)
 LED_CHANNEL = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
+
+
 # Define functions which animate LEDs in various ways.
-
-
 class Led:
     def __init__(self):
-        self.LedMod = '1'
-        self.colour = [0, 0, 0]
+        self.led_mode = '1'
+        self.color = [0, 0, 0]
         # Control the sending order of color data
         self.ORDER = "RGB"
         # Create NeoPixel object with appropriate configuration.
@@ -27,37 +27,37 @@ class Led:
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
 
-    def LED_TYPR(self, order, R_G_B):
-        B = R_G_B & 255
-        G = R_G_B >> 8 & 255
-        R = R_G_B >> 16 & 255
-        Led_type = ["GRB", "GBR", "RGB", "RBG", "BRG", "BGR"]
+    def led_typr(self, order: str, rgb: int):
+        B = rgb & 255
+        G = rgb >> 8 & 255
+        R = rgb >> 16 & 255
+        LED_TYPE = ["GRB", "GBR", "RGB", "RBG", "BRG", "BGR"]
         color = [Color(G, R, B), Color(G, B, R), Color(R, G, B),
                  Color(R, B, G), Color(B, R, G), Color(B, G, R)]
-        if order in Led_type:
-            return color[Led_type.index(order)]
+        if order in LED_TYPE:
+            return color[LED_TYPE.index(order)]
 
-    def colorWipe(self, strip, color, wait_ms=50):
+    def color_wipe(self, color: int, wait_ms: int=50):
         """Wipe color across display a pixel at a time."""
-        color = self.LED_TYPR(self.ORDER, color)
-        for i in range(self.strip.numPixels()):
-            self.strip.setPixelColor(i, color)
+        color = self.led_typr(self.ORDER, color)
+        for index in range(self.strip.numPixels()):
+            self.strip.setPixelColor(index, color)
             self.strip.show()
-            time.sleep(wait_ms/1000.0)
+            time.sleep(wait_ms / 1000.0)
 
-    def theaterChase(self, strip, color, wait_ms=50, iterations=10):
+    def theater_chase(self, color: int, wait_ms: int=50, iterations: int=10):
         """Movie theater light style chaser animation."""
-        color = self.LED_TYPR(self.ORDER, color)
+        color = self.led_typr(self.ORDER, color)
         for j in range(iterations):
             for q in range(3):
                 for i in range(0, self.strip.numPixels(), 3):
-                    self.strip.setPixelColor(i+q, color)
+                    self.strip.setPixelColor(i + q, color)
                 self.strip.show()
-                time.sleep(wait_ms/1000.0)
+                time.sleep(wait_ms / 1000.0)
                 for i in range(0, self.strip.numPixels(), 3):
-                    self.strip.setPixelColor(i+q, 0)
+                    self.strip.setPixelColor(i + q, 0)
 
-    def wheel(self, pos):
+    def wheel(self, pos: int):
         """Generate rainbow colors across 0-255 positions."""
         if pos < 0 or pos > 255:
             r = g = b = 0
@@ -75,68 +75,67 @@ class Led:
             r = 0
             g = pos * 3
             b = 255 - pos * 3
-        return self.LED_TYPR(self.ORDER, Color(r, g, b))
+        return self.led_typr(self.ORDER, Color(r, g, b))
 
-    def rainbow(self, strip, wait_ms=20, iterations=1):
+    def rainbow(self, wait_ms: int=20, iterations: int=1):
         """Draw rainbow that fades across all pixels at once."""
-        for j in range(256*iterations):
+        for j in range(256 * iterations):
             for i in range(self.strip.numPixels()):
-                self.strip.setPixelColor(i, self.wheel((i+j) & 255))
+                self.strip.setPixelColor(i, self.wheel((i + j) & 255))
             self.strip.show()
-            time.sleep(wait_ms/1000.0)
+            time.sleep(wait_ms / 1000.0)
 
-    def rainbowCycle(self, strip, wait_ms=20, iterations=5):
+    def rainbow_cycle(self, wait_ms: int=20, iterations: int=5):
         """Draw rainbow that uniformly distributes itself across all pixels."""
-        for j in range(256*iterations):
+        for j in range(256 * iterations):
             for i in range(self.strip.numPixels()):
-                self.strip.setPixelColor(i, self.wheel(
-                    (int(i * 256 / self.strip.numPixels()) + j) & 255))
+                self.strip.setPixelColor(i, self.wheel((int(i * 256 / self.strip.numPixels()) + j) & 255))
             self.strip.show()
-            time.sleep(wait_ms/1000.0)
+            time.sleep(wait_ms / 1000.0)
 
-    def theaterChase(self, strip, data, wait_ms=50):
+    def theater_chase(self, data: List[int], wait_ms: int=50):
         for q in range(3):
             for i in range(0, self.strip.numPixels(), 3):
                 self.strip.setPixelColor(i+q, Color(data[0], data[1], data[2]))
             self.strip.show()
-            time.sleep(wait_ms/1000.0)
-            for i in range(0, strip.numPixels(), 3):
-                strip.setPixelColor(i+q, 0)
+            time.sleep(wait_ms / 1000.0)
+            for i in range(0, self.strip.numPixels(), 3):
+                self.strip.setPixelColor(i+q, 0)
 
-    def ledIndex(self, index, R, G, B):
-        color = self.LED_TYPR(self.ORDER, Color(R, G, B))
+    def led_index(self, index: int, r: int, g: int, b: int):
+        color = self.led_typr(self.ORDER, Color(r, g, b))
         for i in range(8):
             if index & 0x01 == 1:
                 self.strip.setPixelColor(i, color)
             index = index >> 1
         self.strip.show()
 
-    def light(self, data):
-        oldMod = self.LedMod
+    def light(self, data: List[str]):
+        old_mode = self.led_mode
         if len(data) < 4:
-            self.LedMod = data[1]
+            self.led_mode = data[1]
         else:
             for i in range(3):
-                self.colour[i] = int(data[i+1])
-        if self.LedMod == '0':
-            self.colorWipe(self.strip, Color(0, 0, 0))
-            self.LedMod = oldMod
-        elif self.LedMod == '1':
-            self.ledIndex(255, self.colour[0], self.colour[1], self.colour[2])
-        elif self.LedMod == '2':
+                self.color[i] = int(data[i+1])
+        if self.led_mode == '0':
+            self.color_wipe(Color(0, 0, 0))
+            self.led_mode = old_mode
+        elif self.led_mode == '1':
+            self.led_index(255, self.color[0], self.color[1], self.color[2])
+        elif self.led_mode == '2':
             while True:
-                self.colorWipe(self.strip, Color(255, 0, 0))  # Red wipe
-                self.colorWipe(self.strip, Color(0, 255, 0))  # Green wipe
-                self.colorWipe(self.strip, Color(0, 0, 255))  # Blue wipe
-        elif self.LedMod == '3':
+                self.color_wipe(Color(255, 0, 0))  # Red wipe
+                self.color_wipe(Color(0, 255, 0))  # Green wipe
+                self.color_wipe(Color(0, 0, 255))  # Blue wipe
+        elif self.led_mode == '3':
             while True:
-                self.theaterChase(self.strip, self.colour)
-        elif self.LedMod == '4':
+                self.theater_chase(self.color)
+        elif self.led_mode == '4':
             while True:
                 self.rainbow(self.strip)
-        elif self.LedMod == '5':
+        elif self.led_mode == '5':
             while True:
-                self.rainbowCycle(self.strip)
+                self.rainbow_cycle(self.strip)
 
 
 # Main program logic follows:

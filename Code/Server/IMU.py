@@ -30,15 +30,15 @@ class IMU:
         self.sensor.set_accel_range(mpu6050.ACCEL_RANGE_2G)
         self.sensor.set_gyro_range(mpu6050.GYRO_RANGE_250DEG)
 
-        self.kalman_filter_AX = Kalman_filter(0.001, 0.1)
-        self.kalman_filter_AY = Kalman_filter(0.001, 0.1)
-        self.kalman_filter_AZ = Kalman_filter(0.001, 0.1)
+        self.kalman_filter_accel_x = Kalman_filter(0.001, 0.1)
+        self.kalman_filter_accel_y = Kalman_filter(0.001, 0.1)
+        self.kalman_filter_accel_z = Kalman_filter(0.001, 0.1)
 
-        self.kalman_filter_GX = Kalman_filter(0.001, 0.1)
-        self.kalman_filter_GY = Kalman_filter(0.001, 0.1)
-        self.kalman_filter_GZ = Kalman_filter(0.001, 0.1)
+        self.kalman_filter_gyro_x = Kalman_filter(0.001, 0.1)
+        self.kalman_filter_gyro_y = Kalman_filter(0.001, 0.1)
+        self.kalman_filter_gyro_z = Kalman_filter(0.001, 0.1)
 
-        self.Error_value_accel_data, self.Error_value_gyro_data = self.average_filter()
+        self.accel_average_data, self.gyro_average_data = self.average_filter()
 
     def average_filter(self):
         sum_accel_x = 0
@@ -71,73 +71,64 @@ class IMU:
 
         accel_data['x'] = sum_accel_x
         accel_data['y'] = sum_accel_y
-        accel_data['z'] = sum_accel_z-9.8
+        accel_data['z'] = sum_accel_z - 9.8
 
         gyro_data['x'] = sum_gyro_x
         gyro_data['y'] = sum_gyro_y
         gyro_data['z'] = sum_gyro_z
         return accel_data, gyro_data
 
-    def imuUpdate(self):
+    def imu_update(self):
         accel_data = self.sensor.get_accel_data()
-
         gyro_data = self.sensor.get_gyro_data()
-        ax = self.kalman_filter_AX.kalman(
-            accel_data['x']-self.Error_value_accel_data['x'])
-        ay = self.kalman_filter_AY.kalman(
-            accel_data['y']-self.Error_value_accel_data['y'])
-        az = self.kalman_filter_AZ.kalman(
-            accel_data['z']-self.Error_value_accel_data['z'])
-        gx = self.kalman_filter_GX.kalman(
-            gyro_data['x']-self.Error_value_gyro_data['x'])
-        gy = self.kalman_filter_GY.kalman(
-            gyro_data['y']-self.Error_value_gyro_data['y'])
-        gz = self.kalman_filter_GZ.kalman(
-            gyro_data['z']-self.Error_value_gyro_data['z'])
 
-        norm = math.sqrt(ax*ax+ay*ay+az*az)
+        ax = self.kalman_filter_accel_x.kalman(accel_data['x'] - self.accel_average_data['x'])
+        ay = self.kalman_filter_accel_y.kalman(accel_data['y'] - self.accel_average_data['y'])
+        az = self.kalman_filter_accel_z.kalman(accel_data['z'] - self.accel_average_data['z'])
+        gx = self.kalman_filter_gyro_x.kalman(gyro_data['x'] - self.gyro_average_data['x'])
+        gy = self.kalman_filter_gyro_y.kalman(gyro_data['y'] - self.gyro_average_data['y'])
+        gz = self.kalman_filter_gyro_z.kalman(gyro_data['z'] - self.gyro_average_data['z'])
 
-        ax = ax/norm
-        ay = ay/norm
-        az = az/norm
+        norm = math.sqrt(ax * ax + ay * ay + az * az)
 
-        vx = 2*(self.q1*self.q3 - self.q0*self.q2)
-        vy = 2*(self.q0*self.q1 + self.q2*self.q3)
-        vz = self.q0*self.q0 - self.q1*self.q1 - self.q2*self.q2 + self.q3*self.q3
+        ax = ax / norm
+        ay = ay / norm
+        az = az / norm
 
-        ex = (ay*vz - az*vy)
-        ey = (az*vx - ax*vz)
-        ez = (ax*vy - ay*vx)
+        vx = 2 * (self.q1 * self.q3 - self.q0 * self.q2)
+        vy = 2 * (self.q0 * self.q1 + self.q2 * self.q3)
+        vz = self.q0 * self.q0 - self.q1 * self.q1 - self.q2 * self.q2 + self.q3 * self.q3
 
-        self.exInt += ex*self.Ki
-        self.eyInt += ey*self.Ki
-        self.ezInt += ez*self.Ki
+        ex = (ay * vz - az * vy)
+        ey = (az * vx - ax * vz)
+        ez = (ax * vy - ay * vx)
 
-        gx += self.Kp*ex + self.exInt
-        gy += self.Kp*ey + self.eyInt
-        gz += self.Kp*ez + self.ezInt
+        self.exInt += ex * self.Ki
+        self.eyInt += ey * self.Ki
+        self.ezInt += ez * self.Ki
 
-        self.q0 += (-self.q1*gx - self.q2*gy - self.q3*gz)*self.halfT
-        self.q1 += (self.q0*gx + self.q2*gz - self.q3*gy)*self.halfT
-        self.q2 += (self.q0*gy - self.q1*gz + self.q3*gx)*self.halfT
-        self.q3 += (self.q0*gz + self.q1*gy - self.q2*gx)*self.halfT
+        gx += self.Kp * ex + self.exInt
+        gy += self.Kp * ey + self.eyInt
+        gz += self.Kp * ez + self.ezInt
 
-        norm = math.sqrt(self.q0*self.q0 + self.q1*self.q1 +
-                         self.q2*self.q2 + self.q3*self.q3)
+        self.q0 += (-self.q1 * gx - self.q2 * gy - self.q3 * gz) * self.halfT
+        self.q1 += (self.q0 * gx + self.q2 * gz - self.q3 * gy) * self.halfT
+        self.q2 += (self.q0 * gy - self.q1 * gz + self.q3 * gx) * self.halfT
+        self.q3 += (self.q0 * gz + self.q1 * gy - self.q2 * gx) * self.halfT
+
+        norm = math.sqrt(self.q0 * self.q0 + self.q1 * self.q1 + self.q2 * self.q2 + self.q3 * self.q3)
         self.q0 /= norm
         self.q1 /= norm
         self.q2 /= norm
         self.q3 /= norm
 
         pitch = math.asin(-2*self.q1*self.q3+2*self.q0*self.q2)*57.3
-        roll = math.atan2(2*self.q2*self.q3+2*self.q0 *
-                          self.q1, -2*self.q1*self.q1-2*self.q2*self.q2+1)*57.3
-        yaw = math.atan2(2*(self.q1*self.q2 + self.q0*self.q3), self.q0 *
-                         self.q0+self.q1*self.q1-self.q2*self.q2-self.q3*self.q3)*57.3
+        roll = math.atan2(2*self.q2*self.q3+2*self.q0 * self.q1, -2*self.q1*self.q1-2*self.q2*self.q2+1)*57.3
+        yaw = math.atan2(2*(self.q1*self.q2 + self.q0*self.q3), self.q0 * self.q0+self.q1*self.q1-self.q2*self.q2-self.q3*self.q3)*57.3
         self.pitch = pitch
         self.roll = roll
         self.yaw = yaw
-        return self.pitch, self.roll, self.yaw
+        return pitch, roll, yaw
 
 
 # Main program logic follows:
@@ -147,7 +138,7 @@ if __name__ == '__main__':
     while True:
         try:
             time.sleep(0.01)
-            r, p, y = s.imuUpdate()
+            r, p, y = s.imu_update()
             print(r, p, y)
         except Exception as e:
             print(e)
