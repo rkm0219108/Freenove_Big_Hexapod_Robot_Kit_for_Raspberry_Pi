@@ -1,7 +1,6 @@
 import numpy as np
 import smbus
 
-
 LOAD_BATTERY_CHANNEL = 0
 RPI_BATTERY_CHANNEL = 4
 

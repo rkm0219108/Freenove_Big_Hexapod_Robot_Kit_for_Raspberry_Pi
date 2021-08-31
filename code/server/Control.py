@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from utils import map_num, restriction
 import copy
 import math
 import threading
 import time
+from typing import List
 
 import numpy as np
 import RPi.GPIO as GPIO
@@ -12,7 +12,7 @@ from Command import COMMAND as cmd
 from IMU import *
 from PID import *
 from Servo import *
-
+from utils import map_num, restriction
 
 GPIO_SERVO_POWER = 4
 
@@ -31,7 +31,7 @@ class Control:
         self.flag = 0x00
         self.timeout = 0
         self.height = -25
-        self.body_point = [
+        self.body_point: list[list[float]] = [
             [137.1, 189.4, self.height], 
             [225, 0, self.height], 
             [137.1, -189.4, self.height],
@@ -67,22 +67,23 @@ class Control:
         self.order = ['', '', '', '', '', '']
         self.calibration()
         self.set_leg_angle()
-        self.Thread_conditiona = threading.Thread(target=self.condition)
+        self.condition_thread = threading.Thread(target=self.condition)
 
     def read_from_txt(self, filename: str):
         txt_file = open(filename + ".txt", "r")
         list_row = txt_file.readlines()
-        list_source = []
+        list_source: list[list[str]] = []
+        list_int = [[0] * 3] * 6
         for i in range(len(list_row)):
             column_list = list_row[i].strip().split("\t")
             list_source.append(column_list)
         for i in range(len(list_source)):
             for j in range(len(list_source[i])):
-                list_source[i][j] = int(list_source[i][j])
+                list_int[i][j] = int(list_source[i][j])
         txt_file.close()
-        return list_source
+        return list_int
 
-    def save_to_txt(self, list, filename):
+    def save_to_txt(self, list: List[List[int]], filename: str):
         txt_file = open(filename + '.txt', 'w')
         for i in range(len(list)):
             for j in range(len(list[i])):
@@ -91,7 +92,8 @@ class Control:
             txt_file.write('\n')
         txt_file.close()
 
-    def coordinate_to_angle(self, ox, oy, oz, l1=33, l2=90, l3=110):
+    def coordinate_to_angle(self, coordinate: List[int], l1: int=33, l2: int=90, l3: int=110):
+        ox, oy, oz = coordinate
         a = math.pi/2-math.atan2(oz, oy)
         x_3 = 0
         x_4 = l1*math.sin(a)
@@ -105,16 +107,21 @@ class Control:
         a = round(math.degrees(a))
         b = round(math.degrees(b))
         c = round(math.degrees(c))
-        return a, b, c
+        return [a, b, c]
 
-    def angle_to_coordinate(self, a, b, c, l1=33, l2=90, l3=110):
+    def angle_to_coordinate(self, angle: List[int], l1: int=33, l2: int=90, l3: int=110):
+        a, b, c = angle
         a = math.pi/180*a
         b = math.pi/180*b
         c = math.pi/180*c
         ox = round(l3*math.sin(b+c)+l2*math.sin(b))
         oy = round(l3*math.sin(a)*math.cos(b+c)+l2 * math.sin(a)*math.cos(b)+l1*math.sin(a))
         oz = round(l3*math.cos(a)*math.cos(b+c)+l2 * math.cos(a)*math.cos(b)+l1*math.cos(a))
-        return ox, oy, oz
+        return [ox, oy, oz]
+
+    def leg_point_to_coordinate(self, point: List[int]):
+        ox, oy, oz = point
+        return [-oz, ox, oy]
 
     def calibration(self):
         self.leg_point = [
@@ -126,9 +133,9 @@ class Control:
             [140, 0, 0]
         ]
         for i in range(6):
-            self.calibration_angle[i][0], self.calibration_angle[i][1], self.calibration_angle[i][2] = self.coordinate_to_angle(-self.calibration_leg_point[i][2], self.calibration_leg_point[i][0], self.calibration_leg_point[i][1])
+            self.calibration_angle[i] = self.coordinate_to_angle(self.leg_point_to_coordinate(self.calibration_leg_point[i]))
         for i in range(6):
-            self.angle[i][0], self.angle[i][1], self.angle[i][2] = self.coordinate_to_angle(-self.leg_point[i][2], self.leg_point[i][0], self.leg_point[i][1])
+            self.angle[i] = self.coordinate_to_angle(self.leg_point_to_coordinate(self.leg_point[i]))
 
         for i in range(6):
             self.calibration_angle[i][0] = self.calibration_angle[i][0] - self.angle[i][0]
@@ -139,7 +146,7 @@ class Control:
         if self.check_point():
             angle_range = (0, 180)
             for i in range(6):
-                self.angle[i][0], self.angle[i][1], self.angle[i][2] = self.coordinate_to_angle(-self.leg_point[i][2], self.leg_point[i][0], self.leg_point[i][1])
+                self.angle[i] = self.coordinate_to_angle(self.leg_point_to_coordinate(self.leg_point[i]))
             for i in range(3):
                 self.angle[i][0] = restriction(self.angle[i][0]+self.calibration_angle[i][0], angle_range)
                 self.angle[i][1] = restriction(90-(self.angle[i][1]+self.calibration_angle[i][1]), angle_range)
@@ -181,14 +188,13 @@ class Control:
             print("This coordinate point is out of the active range")
 
     def check_point(self):
-        flag = True
-        leg_lenght = [0, 0, 0, 0, 0, 0]
+        result = True
         for i in range(6):
-            leg_lenght[i] = math.sqrt(self.leg_point[i][0]**2+self.leg_point[i][1]**2+self.leg_point[i][2]**2)
-        for i in range(6):
-            if leg_lenght[i] > 248 or leg_lenght[i] < 90:
-                flag = False
-        return flag
+            leg_lenght = math.sqrt(self.leg_point[i][0]**2+self.leg_point[i][1]**2+self.leg_point[i][2]**2)
+            if leg_lenght > 248 or leg_lenght < 90:
+                result = False
+                break
+        return result
 
     def condition(self):
         while True:
@@ -277,7 +283,7 @@ class Control:
                         self.save_to_txt(self.calibration_leg_point, 'point')
                 self.order = ['', '', '', '', '', '']
 
-    def relax(self, flag):
+    def relax(self, flag: bool):
         if flag:
             self.servo.relax()
         else:
@@ -370,9 +376,6 @@ class Control:
         return (ab)
 
     def imu6050(self):
-        old_r = 0
-        old_p = 0
-        i = 0
         point = self.posture_balance(0, 0, 0)
         self.coordinate_transformation(point)
         self.set_leg_angle()
@@ -393,7 +396,7 @@ class Control:
             self.set_leg_angle()
 
     # example : data=['CMD_MOVE', '1', '0', '25', '10', '0']
-    def run(self, data, Z=40, F=64):
+    def run(self, data: List[str], Z=40, F: int=64):
         gait = data[1]
         x = restriction(int(data[2]), (-35, 35))
         y = restriction(int(data[3]), (-35, 35))
@@ -409,7 +412,7 @@ class Control:
         #   angle=-angle
         if angle != 0:
             x = 0
-        xy = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
+        xy = [[0] * 2] * 6
         for i in range(6):
             xy[i][0] = ((point[i][0]*math.cos(angle/180*math.pi) + point[i][1]*math.sin(angle/180*math.pi)-point[i][0])+x)/F
             xy[i][1] = ((-point[i][0]*math.sin(angle/180*math.pi) + point[i][1]*math.cos(angle/180*math.pi)-point[i][1])+y)/F
@@ -425,39 +428,45 @@ class Control:
                         point[2*i+1][0] = point[2*i+1][0]+8*xy[2*i+1][0]
                         point[2*i+1][1] = point[2*i+1][1]+8*xy[2*i+1][1]
                         point[2*i+1][2] = Z+self.height
+
                     elif j < (F/4):
                         point[2*i][0] = point[2*i][0]-4*xy[2*i][0]
                         point[2*i][1] = point[2*i][1]-4*xy[2*i][1]
                         point[2*i+1][2] = point[2*i+1][2]-z*8
+
                     elif j < (3*F/8):
                         point[2*i][2] = point[2*i][2]+z*8
                         point[2*i+1][0] = point[2*i+1][0]-4*xy[2*i+1][0]
                         point[2*i+1][1] = point[2*i+1][1]-4*xy[2*i+1][1]
+
                     elif j < (5*F/8):
                         point[2*i][0] = point[2*i][0]+8*xy[2*i][0]
                         point[2*i][1] = point[2*i][1]+8*xy[2*i][1]
-
                         point[2*i+1][0] = point[2*i+1][0]-4*xy[2*i+1][0]
                         point[2*i+1][1] = point[2*i+1][1]-4*xy[2*i+1][1]
+
                     elif j < (3*F/4):
                         point[2*i][2] = point[2*i][2]-z*8
                         point[2*i+1][0] = point[2*i+1][0]-4*xy[2*i+1][0]
                         point[2*i+1][1] = point[2*i+1][1]-4*xy[2*i+1][1]
+
                     elif j < (7*F/8):
                         point[2*i][0] = point[2*i][0]-4*xy[2*i][0]
                         point[2*i][1] = point[2*i][1]-4*xy[2*i][1]
                         point[2*i+1][2] = point[2*i+1][2]+z*8
+
                     elif j < (F):
                         point[2*i][0] = point[2*i][0]-4*xy[2*i][0]
                         point[2*i][1] = point[2*i][1]-4*xy[2*i][1]
                         point[2*i+1][0] = point[2*i+1][0]+8*xy[2*i+1][0]
                         point[2*i+1][1] = point[2*i+1][1]+8*xy[2*i+1][1]
+
                 self.coordinate_transformation(point)
                 self.set_leg_angle()
                 time.sleep(delay)
 
         elif gait == "2":
-            aa = 0
+            counter = 0
             number = [5, 2, 1, 0, 3, 4]
             for i in range(6):
                 for j in range(int(F/6)):
@@ -476,7 +485,7 @@ class Control:
                     self.coordinate_transformation(point)
                     self.set_leg_angle()
                     time.sleep(delay)
-                    aa += 1
+                    counter += 1
 
 
 if __name__ == '__main__':

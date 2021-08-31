@@ -28,7 +28,7 @@ class Server:
         self.buzzer = Buzzer()
         self.control = Control()
         self.sonic = Ultrasonic()
-        self.control.Thread_conditiona.start()
+        self.control.condition_thread.start()
 
     def get_interface_ip(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

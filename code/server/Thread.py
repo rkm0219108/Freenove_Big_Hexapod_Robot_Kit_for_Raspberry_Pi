@@ -1,7 +1,7 @@
 import ctypes
 import inspect
-from threading import Thread
 import time
+from threading import Thread
 from typing import Optional
 
 

@@ -2,7 +2,6 @@ import time
 
 import RPi.GPIO as GPIO
 
-
 TRIGGER_PIN = 27
 ECHO_PIN = 22
 

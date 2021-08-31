@@ -1,9 +1,9 @@
 # coding:utf-8
-from utils import map_num
 import time
 
 import Adafruit_PCA9685
 
+from utils import map_num
 
 ANGLE_RANGE = (0, 180)
 DUTY_RANGE = (0, 4095)

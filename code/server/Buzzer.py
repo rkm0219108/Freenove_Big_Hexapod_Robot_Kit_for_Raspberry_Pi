@@ -2,7 +2,6 @@ import time
 
 import RPi.GPIO as GPIO
 
-
 BUZZER_PIN = 17
 
 
